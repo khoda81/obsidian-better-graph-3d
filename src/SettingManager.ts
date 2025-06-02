@@ -52,7 +52,7 @@ const corruptedMessage =
 /**
  * @remarks the setting will not keep the temporary setting. It will only keep the saved settings.
  */
-export class MySettingManager implements ISettingManager<Setting> {
+export class PluginSettingManager implements ISettingManager<Setting> {
 	private plugin: Plugin;
 	private setting: State<Setting> = new State(DEFAULT_SETTING);
 	private asyncQueue = new AsyncQueue();
