@@ -2,24 +2,17 @@ import Stats from 'stats.js'
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import * as THREE from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { forceSimulation, forceManyBody, forceLink, forceCenter } from 'd3-force-3d';
+import createLayout from 'ngraph.forcelayout';
+import createGraph from "ngraph.graph";
+
 
 export const VIEW_TYPE_GRAPH3D = "graph-3d-view";
 
-interface Node {
-	id: number;
-	x: number;
-	y: number;
-	z?: number;
-}
 
 export class Graph3DView extends ItemView {
-	scene: THREE.Scene;
-	controls: OrbitControls;
-	camera: THREE.PerspectiveCamera;
-	renderer: THREE.WebGLRenderer;
 	animationFrameId: number;
-	sim: any;
+	renderer: THREE.WebGLRenderer
+	layout: any
 
 	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
@@ -43,9 +36,9 @@ export class Graph3DView extends ItemView {
 		containerEl.style.overflow = 'hidden';
 
 		// Scene setup
-		this.scene = new THREE.Scene();
-		this.camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 10000);
-		this.camera.position.z = 1000;
+		const scene = new THREE.Scene();
+		const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 100000);
+		camera.position.z = 1000;
 
 		this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 		this.renderer.setSize(container.clientWidth, container.clientHeight);
@@ -54,85 +47,99 @@ export class Graph3DView extends ItemView {
 		this.renderer.domElement.style.width = "100%";
 		this.renderer.domElement.style.height = "100%";
 
-		this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-		this.controls.enableDamping = true;
-
-		this.scene.add(new THREE.AmbientLight(0x808080));
-		const light = new THREE.DirectionalLight(0xffffff, 1);
-		light.position.set(5, 0, 0);
-		this.scene.add(light);
+		const controls = new OrbitControls(camera, this.renderer.domElement);
+		controls.enableDamping = true;
 
 		// Graph generation
-		const numNodes = 7000;
-		const nodes: Node[] = Array.from({ length: numNodes }, (_, i) => ({ id: i }));
-		const links: { source: number, target: number }[] = [];
+		const numNodes = 1000;
+		const graph = createGraph();
 
-		for (let i = 0; i < numNodes; i++) {
-			for (let j = i + 1; j < numNodes; j++) {
-				if (Math.random() < (2 / numNodes)) links.push({ source: i, target: j });
-			}
-		}
+		for (let index = 0; index < numNodes; index++) { graph.addNode(index) }
+
+		// Critical parameter: average degree (determines percolation phase)
+		const desiredAverageDegree = 0.59; // Example value (adjust as needed)
+		const connectionProbability = desiredAverageDegree / (numNodes - 1);
+
+		let linkIdx = 0;
+		graph.forEachNode(source => {
+			const count = graph.getLinkCount();
+			graph.forEachNode(target => {
+				if (source !== target && Math.random() < connectionProbability) {
+					graph.addLink(source.id, target.id, linkIdx);
+					linkIdx += 2;
+				}
+			});
+
+			// if (graph.getLinkCount() - count === 0) {
+			// 	const targetId = Math.floor(Math.random() * numNodes);
+			// 	if (source.id !== targetId) {
+			// 		graph.addLink(source.id, targetId, linkIdx);
+			// 		linkIdx += 2;
+			// 	}
+			// }
+		})
+
+		scene.add(new THREE.AmbientLight(0x808080));
+		const light = new THREE.DirectionalLight(0xffffff, 1);
+		light.position.set(5, 0, 0);
+		scene.add(light);
 
 		// Node and link visualization
-		const sphereGeometry = new THREE.SphereGeometry(10, 16, 16);
+		const sphereGeometry = new THREE.SphereGeometry(3, 16, 16);
 		const sphereMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
 		const instancedSpheres = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, numNodes);
 
 		// Give instances random colors
-		nodes.forEach((node, index) => instancedSpheres.setColorAt(index, new THREE.Color().setHex(0xffffff * Math.random())));
+		graph.forEachNode(node => instancedSpheres.setColorAt(node.id, new THREE.Color().setHex(0xffffff * Math.random())));
+		console.log(instancedSpheres);
 
-		this.scene.add(instancedSpheres);
+		scene.add(instancedSpheres);
 
-		const mat = new THREE.LineBasicMaterial({ color: 0x606060 });
-		const linkMeshes: THREE.Line[] = links.map(() => {
-			const geo = new THREE.BufferGeometry().setFromPoints([
-				new THREE.Vector3(), new THREE.Vector3()
-			]);
+		const linkGeometry = new THREE.BufferGeometry();
 
-			const line = new THREE.Line(geo, mat);
-			return line;
+		// const linkIndices = new Array(links.length * 2);
+		// links.forEach((link, i) => {
+		// 	linkIndices[i * 2] = link.source;
+		// 	linkIndices[i * 2 + 1] = link.target;
+		// });
+		// // const linkIndices = links.flatMap(link => [link.source, link.target]);
+		// // const linkIndices = /* pairs of indices of src and tgt for each link */;
+
+		// linkGeometry.setIndex(linkIndices);
+		// linkGeometry.setAttribute('position', sphereGeometry.attributes.position);
+
+		const positions = new Float32Array(graph.getLinkCount() * 6); // 2 points per link, 3 coords per point
+		linkGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+		const linkMaterial = new THREE.LineBasicMaterial({
+			color: 0xa0a0a0,
+			transparent: true,
+			opacity: 0.6
 		});
 
-		const simId = Math.random();
+		const linkMesh = new THREE.LineSegments(linkGeometry, linkMaterial);
+		scene.add(linkMesh);
 
-		// FIX: Causes performance issues, put this in a web worker
-		this.sim = forceSimulation(nodes, 3)
-			.force("charge", forceManyBody().strength(-10))
-			.force("link", forceLink(links).distance(50).strength(1.1))
-			.force("center", forceCenter(0, 0, 0).strength(1))
-			.alphaDecay(0.03)
-			.alphaMin(0.1)
-			.on("tick", () => {
-				console.log(`Sim ${simId} is running`);
+		// // FIX: Doing this in the main thread causes performance issues,
+		// // put this in a web worker
+		// this.sim = forceSimulation(nodes, 3)
+		// 	.force("charge", forceManyBody().strength(-50))
+		// 	.force("link", forceLink(links).distance(20).strength(1.1))
+		// 	.force("center", forceCenter(0, 0, 0).strength(1))
+		// 	.alphaDecay(0.003)
+		// 	.alphaMin(0.01);
 
-				// const dummy = new THREE.Object3D();
-				nodes.forEach((node, i) => {
-					const matrix = new THREE.Matrix4()
-						.setPosition(node.x, node.y, node.z ?? 0);
+		this.layout = createLayout(graph, {
+			dimensions: 3,
+			timeStep: 0.5,
+			gravity: -52,
+			theta: 0.8,
+			springLength: 10,
+			springCoefficient: 0.8,
+			dragCoefficient: 0.2,
+		});
 
-					instancedSpheres.setMatrixAt(i, matrix)
-				})
-
-				instancedSpheres.count = nodes.length;
-				instancedSpheres.instanceMatrix.needsUpdate = true;
-
-				// links.forEach((link: any, i: number) => {
-				// 	const src = link.source;
-				// 	const tgt = link.target;
-				// 	const line = linkMeshes[i];
-				// 	const positions = line?.geometry.attributes.position as THREE.Float32BufferAttribute;
-				// 	positions.setXYZ(0, src.x, src.y, src.z ?? 0);
-				// 	positions.setXYZ(1, tgt.x, tgt.y, tgt.z ?? 0);
-				// 	// console.log("Link positions", src, tgt, positions);
-				// 	// positions[0] = src.x; positions[1] = src.y; positions[2] = src.z ?? 0;
-				// 	// positions[3] = tgt.x; positions[4] = tgt.y; positions[5] = tgt.z ?? 0;
-				// 	positions.needsUpdate = true;
-				// });
-			});
-
-		this.register(() => this.sim.stop())
-
-		console.log(this.sim);
+		console.log(this.layout);
 
 		const stats = new Stats();
 		stats.showPanel(0);
@@ -149,9 +156,41 @@ export class Graph3DView extends ItemView {
 
 			stats.begin();
 
-			this.updateViewSize();
-			this.controls.update(delta);
-			this.renderer.render(this.scene, this.camera);
+			this.layout.step();
+
+			// console.log(`Sim ${simId} is running, alpha: ${this.layout.alpha()}`);
+
+			// const dummy = new THREE.Object3D();
+			graph.forEachNode((node) => {
+				const position = this.layout.getNodePosition(node.id);
+				// console.log(node, position);
+				const matrix = new THREE.Matrix4()
+					.setPosition(position.x, position.y, position.z ?? 0);
+
+				instancedSpheres.setMatrixAt(node.id, matrix)
+			})
+
+			instancedSpheres.count = graph.getNodeCount();
+			instancedSpheres.instanceMatrix.needsUpdate = true;
+
+			const linePositionAttribute = linkGeometry.getAttribute('position') as THREE.BufferAttribute;
+			graph.forEachLink((link) => {
+				// const source = this.layout.getNodePosition(link.fromId);
+				// const target = this.layout.getNodePosition(link.toId);
+				const { from, to } = this.layout.getLinkPosition(link.id);
+
+				linePositionAttribute.setXYZ(link.data, from.x, from.y, from.z ?? 0);
+				linePositionAttribute.setXYZ(link.data + 1, to.x, to.y, to.z ?? 0);
+			});
+
+			linePositionAttribute.needsUpdate = true
+
+			linkGeometry
+
+			this.updateViewSize(this.renderer, camera);
+			controls.update(delta);
+			this.renderer.render(scene, camera);
+
 
 			stats.end();
 		};
@@ -160,16 +199,16 @@ export class Graph3DView extends ItemView {
 		animate();
 	}
 
-	private updateViewSize() {
-		const canvas = this.renderer.domElement;
-		this.camera.aspect = canvas.clientWidth / canvas.clientHeight;
-		this.camera.updateProjectionMatrix();
+	private updateViewSize(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera) {
+		const canvas = renderer.domElement;
+		camera.aspect = canvas.clientWidth / canvas.clientHeight;
+		camera.updateProjectionMatrix();
 
 		const width = canvas.clientWidth;
 		const height = canvas.clientHeight;
 		const needResize = canvas.width !== width || canvas.height !== height;
 		if (needResize) {
-			this.renderer.setSize(width, height, false);
+			renderer.setSize(width, height, false);
 		}
 
 		return needResize;
