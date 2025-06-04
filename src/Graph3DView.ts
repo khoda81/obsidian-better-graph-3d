@@ -24,8 +24,8 @@ class Graph3DLayout {
 			timeStep: 0.5,
 			gravity: -1,
 			theta: 0.8,
-			springLength: 10,
-			springCoefficient: 0.8,
+			springLength: 5,
+			springCoefficient: 0.2,
 			dragCoefficient: 0.8,
 		});
 	}
@@ -112,11 +112,12 @@ export class Graph3DView extends ItemView {
 		const containerEl = container as HTMLElement;
 		containerEl.style.padding = '0';
 		containerEl.style.overflow = 'hidden';
+		containerEl.style.position = 'relative';
 
 		// Scene setup
 		const scene = new THREE.Scene();
 		const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 1, 100000);
-		camera.position.z = 1000;
+		camera.position.z = 200;
 
 		this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 		this.renderer.setSize(container.clientWidth, container.clientHeight);
@@ -170,14 +171,75 @@ export class Graph3DView extends ItemView {
 		stats.dom.style.right = '10px';
 		container.appendChild(stats.dom);
 
+		// Create a label for node
+
+		function makeLabelCanvas(container: Node, text: string) {
+			const canvas = container.createEl("canvas", { cls: "graph-3d-node-canvas" });
+			const ctx = canvas.getContext('2d')!;
+
+			ctx.font = '48px sans-serif';
+			const metrics = ctx.measureText(text);
+
+			canvas.width = metrics.width + 20;
+			canvas.height = 68;
+
+			ctx.fillStyle = 'rgba(10,10,10,0.5)';
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+			ctx.fillStyle = 'white';
+			ctx.font = '48px sans-serif';
+			ctx.fillText(text, 10, 58);
+
+			canvas.style.visibility = "hidden";
+
+			return canvas;
+		}
+
+		const labelCanvas = makeLabelCanvas(container, this.layout.graph.getNode(0)?.data.name);
+
+		function createLabelMesh(canvas: HTMLCanvasElement) {
+			const texture = new THREE.CanvasTexture(canvas);
+			texture.matrix.translate(10.5, 100);
+			// texture.offset.set(0.5, 0);
+
+			const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+			const sprite = new THREE.Sprite(material);
+			sprite.scale.set(canvas.width / 100, canvas.height / 100, 1);
+			sprite.center.set(0.5, -1.5);
+
+			return sprite;
+		}
+
+		const labelSprite = createLabelMesh(labelCanvas);
+		scene.add(labelSprite);
+
+		// const labelContainer = container.createDiv({ cls: "graph-3d-node-label" });
+
+		// const ctx = labelContainer.getContext("2d")!;
+		// ctx.font = "16px sans-serif";
+		// const metrics = ctx.measureText("مرحبا world"); // RTL + LTR
+		// labelContainer.width = textWidth + 20;
+		// labelContainer.height = 40;
+
+
+		// labelContainer.style.position = "absolute";
+		// // labelContainer.style.textWrapMode = "nowrap";
+		// labelContainer.style.pointerEvents = "none";
+		// // labelContainer.style.paddingLeft = "-50%";
+		// // labelDiv.style.right = "0";
+
 		const clock = new THREE.Clock();
 		// Animation loop
 		const animate = () => {
 			this.animationFrameId = requestAnimationFrame(animate);
 
 			stats.begin();
-			this.layout.layout.step();
+			this.updateViewSize(this.renderer, camera);
 
+			const delta = clock.getDelta();
+			controls.update(delta);
+
+			this.layout.layout.step();
 			this.layout.layout.forEachBody((body, nodeId) => {
 				const matrix = new THREE.Matrix4()
 					.setPosition(body.pos.x, body.pos.y, body.pos.z ?? 0);
@@ -188,6 +250,16 @@ export class Graph3DView extends ItemView {
 			instancedSpheres.count = this.layout.graph.getNodeCount();
 			instancedSpheres.instanceMatrix.needsUpdate = true;
 			instancedSpheres.computeBoundingSphere();
+
+			const firstPos = this.layout.layout.getNodePosition(0);
+			const nodePos = new THREE.Vector3(firstPos.x, firstPos.y, firstPos.z);
+			// const labelPos = nodePos.add(new THREE.Vector3(0, 2, 0));
+			const labelPos = nodePos;
+			// const screenPos = labelPos.project(camera);
+
+			// labelContainer.style.bottom = `${(screenPos.y + 1) / 2 * this.renderer.domElement.height}px`;
+			// labelContainer.style.left = `${(screenPos.x + 1) / 2 * this.renderer.domElement.width}px`;
+			labelSprite.position.set(labelPos.x, labelPos.y, labelPos.z);
 
 			const linePositionAttribute = linkGeometry.getAttribute('position') as THREE.BufferAttribute;
 			this.layout.graph.forEachLink((link) => {
@@ -200,10 +272,6 @@ export class Graph3DView extends ItemView {
 			linePositionAttribute.needsUpdate = true
 			linkGeometry.computeBoundingSphere();
 
-			this.updateViewSize(this.renderer, camera);
-
-			const delta = clock.getDelta();
-			controls.update(delta);
 			this.renderer.render(scene, camera);
 
 			stats.end();
