@@ -130,7 +130,6 @@ export class Graph3DView extends ItemView {
 
 		// Graph generation
 		this.layout = new Graph3DLayout();
-		this.layout.createRandomGraph(5000);
 		this.layout.fromMetadataCache(this.app.metadataCache);
 
 		scene.add(new THREE.AmbientLight(0x808080));
@@ -139,7 +138,7 @@ export class Graph3DView extends ItemView {
 		scene.add(light);
 
 		// Node and link visualization
-		const sphereGeometry = new THREE.SphereGeometry(3, 16, 16);
+		const sphereGeometry = new THREE.SphereGeometry(1, 16, 16);
 		const sphereMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
 		const instancedSpheres = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, this.layout.graph.getNodeCount());
 
@@ -188,6 +187,7 @@ export class Graph3DView extends ItemView {
 
 			instancedSpheres.count = this.layout.graph.getNodeCount();
 			instancedSpheres.instanceMatrix.needsUpdate = true;
+			instancedSpheres.computeBoundingSphere();
 
 			const linePositionAttribute = linkGeometry.getAttribute('position') as THREE.BufferAttribute;
 			this.layout.graph.forEachLink((link) => {
@@ -198,21 +198,19 @@ export class Graph3DView extends ItemView {
 			});
 
 			linePositionAttribute.needsUpdate = true
-
-			linkGeometry
+			linkGeometry.computeBoundingSphere();
 
 			this.updateViewSize(this.renderer, camera);
 
 			const delta = clock.getDelta();
-			console.log(delta);
-
 			controls.update(delta);
 			this.renderer.render(scene, camera);
 
 			stats.end();
 		};
+		console.log(this);
 
-		// this.registerEvent()
+
 		animate();
 	}
 
