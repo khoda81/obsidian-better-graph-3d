@@ -1,7 +1,7 @@
 import Stats from 'stats.js'
 import { ItemView, MetadataCache, WorkspaceLeaf } from "obsidian";
 import * as THREE from "three";
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { ArcballControls } from 'three/addons/controls/ArcballControls.js';
 import createLayout, { Layout } from 'ngraph.forcelayout';
 import createGraph, { Graph, NodeId } from "ngraph.graph";
 
@@ -88,9 +88,11 @@ class Graph3DLayout {
 }
 
 export class Graph3DView extends ItemView {
-	animationFrameId: number;
-	renderer: THREE.WebGLRenderer
-	layout: Graph3DLayout
+	private animationFrameId: number;
+	private renderer: THREE.WebGLRenderer;
+	private layout: Graph3DLayout;
+	private raycaster: THREE.Raycaster;
+	private selectedNodeId: number | undefined = undefined;
 
 	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
@@ -105,29 +107,33 @@ export class Graph3DView extends ItemView {
 	}
 
 	async onOpen() {
-		const container = this.containerEl.children[1];
-		if (!container) return;
-		container.empty();
+		this.headerEl.style.background = "transparent";
+		this.contentEl.empty();
 
-		const containerEl = container as HTMLElement;
-		containerEl.style.padding = '0';
-		containerEl.style.overflow = 'hidden';
-		containerEl.style.position = 'relative';
+		this.contentEl.style.padding = '0';
+		this.contentEl.style.overflow = 'hidden';
+		this.contentEl.style.position = 'relative';
 
 		// Scene setup
 		const scene = new THREE.Scene();
-		const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 1, 100000);
+		const camera = new THREE.PerspectiveCamera(60, this.contentEl.clientWidth / this.contentEl.clientHeight, 0.1, 10000);
 		camera.position.z = 200;
 
 		this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-		this.renderer.setSize(container.clientWidth, container.clientHeight);
+		this.renderer.setSize(this.contentEl.clientWidth, this.contentEl.clientHeight);
 		this.renderer.shadowMap.enabled = true;
-		container.appendChild(this.renderer.domElement);
+
+		this.containerEl.appendChild(this.renderer.domElement);
 		this.renderer.domElement.style.width = "100%";
 		this.renderer.domElement.style.height = "100%";
+		this.renderer.domElement.style.position = "absolute";
 
-		const controls = new OrbitControls(camera, this.renderer.domElement);
-		controls.enableDamping = true;
+		const controls = new ArcballControls(camera, this.renderer.domElement, scene);
+		controls.cursorZoom = true;
+		controls.setGizmosVisible(false);
+
+		// Add raycaster for node selection
+		this.raycaster = new THREE.Raycaster();
 
 		// Graph generation
 		this.layout = new Graph3DLayout();
@@ -169,75 +175,56 @@ export class Graph3DView extends ItemView {
 		stats.dom.style.position = 'absolute';
 		stats.dom.style.top = '10px';
 		stats.dom.style.right = '10px';
-		container.appendChild(stats.dom);
+		stats.dom.style.left = 'auto';
+		this.contentEl.appendChild(stats.dom);
 
-		// Create a label for node
 
-		function makeLabelCanvas(container: Node, text: string) {
-			const canvas = container.createEl("canvas", { cls: "graph-3d-node-canvas" });
-			const ctx = canvas.getContext('2d')!;
-
-			ctx.font = '48px sans-serif';
-			const metrics = ctx.measureText(text);
-
-			canvas.width = metrics.width + 20;
-			canvas.height = 68;
-
-			ctx.fillStyle = 'rgba(10,10,10,0.5)';
-			ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-			ctx.fillStyle = 'white';
-			ctx.font = '48px sans-serif';
-			ctx.fillText(text, 10, 58);
-
-			canvas.style.visibility = "hidden";
-
-			return canvas;
-		}
-
-		const labelCanvas = makeLabelCanvas(container, this.layout.graph.getNode(0)?.data.name);
-
-		function createLabelMesh(canvas: HTMLCanvasElement) {
-			const texture = new THREE.CanvasTexture(canvas);
-			texture.matrix.translate(10.5, 100);
-			// texture.offset.set(0.5, 0);
-
-			const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
-			const sprite = new THREE.Sprite(material);
-			sprite.scale.set(canvas.width / 100, canvas.height / 100, 1);
-			sprite.center.set(0.5, -1.5);
-
-			return sprite;
-		}
-
+		const labelCanvas = makeLabelCanvas(this.contentEl, this.layout.graph.getNode(0)?.data.name);
 		const labelSprite = createLabelMesh(labelCanvas);
 		scene.add(labelSprite);
 
-		// const labelContainer = container.createDiv({ cls: "graph-3d-node-label" });
+		let downX: number | undefined;
+		let downY: number | undefined;
 
-		// const ctx = labelContainer.getContext("2d")!;
-		// ctx.font = "16px sans-serif";
-		// const metrics = ctx.measureText("مرحبا world"); // RTL + LTR
-		// labelContainer.width = textWidth + 20;
-		// labelContainer.height = 40;
+		this.registerDomEvent(this.renderer.domElement, "pointerdown", (event) => {
+			// Right click
+			if (event.button === 0) {
+				downX = event.clientX;
+				downY = event.clientY;
+			} else if (event.button === 2) {
+				this.selectedNodeId = undefined;
+			}
+		})
 
+		this.registerDomEvent(this.renderer.domElement, "pointerup", (event) => {
+			if (event.clientX !== downX || event.clientY != downY) {
+				downX = downY = undefined;
+				return;
+			}
 
-		// labelContainer.style.position = "absolute";
-		// // labelContainer.style.textWrapMode = "nowrap";
-		// labelContainer.style.pointerEvents = "none";
-		// // labelContainer.style.paddingLeft = "-50%";
-		// // labelDiv.style.right = "0";
+			// Calculate pointer position in normalized device coordinates
+			const rect = this.renderer.domElement.getBoundingClientRect();
+			const pointerX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+			const pointerY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-		const clock = new THREE.Clock();
+			this.raycaster.setFromCamera(new THREE.Vector2(pointerX, pointerY), camera);
+			const intersects = this.raycaster.intersectObject(instancedSpheres);
+
+			if (intersects.length > 0) {
+				const instanceId = intersects[0]?.instanceId;
+				if (instanceId !== undefined) {
+					this.selectedNodeId = instanceId;
+					event.preventDefault();
+				}
+			}
+		})
+
 		// Animation loop
 		const animate = () => {
 			this.animationFrameId = requestAnimationFrame(animate);
 
 			stats.begin();
 			this.updateViewSize(this.renderer, camera);
-
-			const delta = clock.getDelta();
-			controls.update(delta);
 
 			this.layout.layout.step();
 			this.layout.layout.forEachBody((body, nodeId) => {
@@ -247,18 +234,21 @@ export class Graph3DView extends ItemView {
 				instancedSpheres.setMatrixAt(nodeId, matrix)
 			});
 
+			// Set camera target
+			if (this.selectedNodeId !== undefined) {
+				const position = this.layout.layout.getNodePosition(this.selectedNodeId);
+				controls.target.copy(position);
+				controls.update();
+			}
+
 			instancedSpheres.count = this.layout.graph.getNodeCount();
 			instancedSpheres.instanceMatrix.needsUpdate = true;
 			instancedSpheres.computeBoundingSphere();
 
 			const firstPos = this.layout.layout.getNodePosition(0);
 			const nodePos = new THREE.Vector3(firstPos.x, firstPos.y, firstPos.z);
-			// const labelPos = nodePos.add(new THREE.Vector3(0, 2, 0));
-			const labelPos = nodePos;
-			// const screenPos = labelPos.project(camera);
 
-			// labelContainer.style.bottom = `${(screenPos.y + 1) / 2 * this.renderer.domElement.height}px`;
-			// labelContainer.style.left = `${(screenPos.x + 1) / 2 * this.renderer.domElement.width}px`;
+			const labelPos = nodePos;
 			labelSprite.position.set(labelPos.x, labelPos.y, labelPos.z);
 
 			const linePositionAttribute = linkGeometry.getAttribute('position') as THREE.BufferAttribute;
@@ -301,4 +291,40 @@ export class Graph3DView extends ItemView {
 		cancelAnimationFrame(this.animationFrameId);
 		this.renderer.dispose();
 	}
+}
+
+function createLabelMesh(canvas: HTMLCanvasElement) {
+	const texture = new THREE.CanvasTexture(canvas);
+	texture.matrix.translate(10.5, 100);
+	// texture.offset.set(0.5, 0);
+
+	const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+	const sprite = new THREE.Sprite(material);
+	sprite.scale.set(canvas.width / 100, canvas.height / 100, 1);
+	sprite.center.set(0.5, -2.5);
+
+	return sprite;
+}
+
+// Create a label for node
+function makeLabelCanvas(container: Node, text: string) {
+	const canvas = container.createEl("canvas", { cls: "graph-3d-node-canvas" });
+	const ctx = canvas.getContext('2d')!;
+
+	ctx.font = '48px sans-serif';
+	const metrics = ctx.measureText(text);
+
+	canvas.width = metrics.width + 20;
+	canvas.height = 68;
+
+	ctx.fillStyle = 'rgba(10,10,10,0.5)';
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+	ctx.fillStyle = 'white';
+	ctx.font = '48px sans-serif';
+	ctx.fillText(text, 10, 58);
+
+	canvas.style.visibility = "hidden";
+
+	return canvas;
 }
