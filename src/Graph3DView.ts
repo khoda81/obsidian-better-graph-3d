@@ -8,7 +8,7 @@ import createGraph, { Graph, NodeId } from "ngraph.graph";
 
 export const VIEW_TYPE_GRAPH3D = "graph-3d-view";
 
-type GraphNode = { name: string, resolved: boolean };
+type GraphNode = { name: string, resolved: boolean, labelSprite?: THREE.Sprite };
 type VaultGraph = Graph<GraphNode, number>;
 
 class Graph3DLayout {
@@ -83,7 +83,9 @@ class Graph3DLayout {
 	}
 
 	private link(sourceId: NodeId, targetIndex: NodeId) {
-		this.graph.addLink(sourceId, targetIndex, 2 * this.graph.getLinkCount());
+		if (!this.graph.hasLink(sourceId, targetIndex)) {
+			this.graph.addLink(sourceId, targetIndex, 2 * this.graph.getLinkCount());
+		}
 	}
 }
 
@@ -93,6 +95,9 @@ export class Graph3DView extends ItemView {
 	private layout: Graph3DLayout;
 	private raycaster: THREE.Raycaster;
 	private selectedNodeId: number | undefined = undefined;
+
+	private instancedSpheres: THREE.InstancedMesh
+	private linkMesh: THREE.LineSegments
 
 	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
@@ -132,12 +137,20 @@ export class Graph3DView extends ItemView {
 		controls.cursorZoom = true;
 		controls.setGizmosVisible(false);
 
-		// Add raycaster for node selection
-		this.raycaster = new THREE.Raycaster();
-
 		// Graph generation
 		this.layout = new Graph3DLayout();
 		this.layout.fromMetadataCache(this.app.metadataCache);
+
+		// this.registerEvent(
+		// 	this.app.metadataCache.on("resolved", () => this.layout.fromMetadataCache(this.app.metadataCache))
+		// );
+
+		this.registerEvent(
+			this.app.metadataCache.on("resolve", (file) => {
+				// Implement removing/changing nodes/links
+				this.layout.fromMetadataCache(this.app.metadataCache);
+			})
+		)
 
 		scene.add(new THREE.AmbientLight(0x808080));
 		const light = new THREE.DirectionalLight(0xffffff, 1);
@@ -145,30 +158,41 @@ export class Graph3DView extends ItemView {
 		scene.add(light);
 
 		// Node and link visualization
-		const sphereGeometry = new THREE.SphereGeometry(1, 16, 16);
+		const linkMaterial = new THREE.LineBasicMaterial({ color: 0xa0a0a0, transparent: true, opacity: 0.6 });
 		const sphereMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
-		const instancedSpheres = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, this.layout.graph.getNodeCount());
+
+		this.instancedSpheres = createNodeMesh(this.layout.graph.getNodeCount(), sphereMaterial);
+		scene.add(this.instancedSpheres);
+
+		this.linkMesh = createLinkGeometry(this.layout.graph.getLinkCount(), linkMaterial);
+		scene.add(this.linkMesh);
+
+		const updateSceneBuffers = () => {
+			const sphereBufferCapacity = this.instancedSpheres.instanceMatrix.array.length / 16;
+			if (this.layout.graph.getNodeCount() > sphereBufferCapacity) {
+				// TODO: try only changing the instanceMatrix instead
+				scene.remove(this.instancedSpheres);
+				this.instancedSpheres.dispose();
+
+				this.instancedSpheres = createNodeMesh(2 * sphereBufferCapacity, sphereMaterial);
+				scene.add(this.instancedSpheres);
+			}
+
+			const linkBufferCapacity = this.linkMesh.geometry.getAttribute('position').count;
+			if (this.layout.graph.getLinkCount() * 2 > linkBufferCapacity) {
+				scene.remove(this.linkMesh);
+				this.linkMesh.geometry.dispose();
+
+				this.linkMesh = createLinkGeometry(2 * linkBufferCapacity, linkMaterial);
+				scene.add(this.linkMesh);
+			}
+		}
 
 		// Give instances random colors
 		this.layout.graph.forEachNode(node => {
 			const color = node.data.resolved ? 0xffffff * Math.random() : 0x404040;
-			instancedSpheres.setColorAt(node.id, new THREE.Color(color))
+			this.instancedSpheres.setColorAt(node.id as number, new THREE.Color(color))
 		});
-
-		scene.add(instancedSpheres);
-
-		const linkGeometry = new THREE.BufferGeometry();
-		const positions = new Float32Array(this.layout.graph.getLinkCount() * 6); // 2 points per link, 3 coords per point
-		linkGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-		const linkMaterial = new THREE.LineBasicMaterial({
-			color: 0xa0a0a0,
-			transparent: true,
-			opacity: 0.6
-		});
-
-		const linkMesh = new THREE.LineSegments(linkGeometry, linkMaterial);
-		scene.add(linkMesh);
 
 		const stats = new Stats();
 		stats.showPanel(0);
@@ -178,46 +202,11 @@ export class Graph3DView extends ItemView {
 		stats.dom.style.left = 'auto';
 		this.contentEl.appendChild(stats.dom);
 
-
-		const labelCanvas = makeLabelCanvas(this.contentEl, this.layout.graph.getNode(0)?.data.name);
-		const labelSprite = createLabelMesh(labelCanvas);
-		scene.add(labelSprite);
-
-		let downX: number | undefined;
-		let downY: number | undefined;
-
-		this.registerDomEvent(this.renderer.domElement, "pointerdown", (event) => {
-			// Right click
-			if (event.button === 0) {
-				downX = event.clientX;
-				downY = event.clientY;
-			} else if (event.button === 2) {
-				this.selectedNodeId = undefined;
-			}
-		})
-
-		this.registerDomEvent(this.renderer.domElement, "pointerup", (event) => {
-			if (event.clientX !== downX || event.clientY != downY) {
-				downX = downY = undefined;
-				return;
-			}
-
-			// Calculate pointer position in normalized device coordinates
-			const rect = this.renderer.domElement.getBoundingClientRect();
-			const pointerX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-			const pointerY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-			this.raycaster.setFromCamera(new THREE.Vector2(pointerX, pointerY), camera);
-			const intersects = this.raycaster.intersectObject(instancedSpheres);
-
-			if (intersects.length > 0) {
-				const instanceId = intersects[0]?.instanceId;
-				if (instanceId !== undefined) {
-					this.selectedNodeId = instanceId;
-					event.preventDefault();
-				}
-			}
-		})
+		this.layout.graph.forEachNode(node => {
+			const labelCanvas = makeLabelCanvas(this.contentEl, node.data.name as string);
+			node.data.labelSprite = createLabelMesh(labelCanvas);
+			scene.add(node.data.labelSprite);
+		});
 
 		// Animation loop
 		const animate = () => {
@@ -225,33 +214,26 @@ export class Graph3DView extends ItemView {
 
 			stats.begin();
 			this.updateViewSize(this.renderer, camera);
+			updateSceneBuffers();
 
 			this.layout.layout.step();
 			this.layout.layout.forEachBody((body, nodeId) => {
-				const matrix = new THREE.Matrix4()
-					.setPosition(body.pos.x, body.pos.y, body.pos.z ?? 0);
+				const position = new THREE.Vector3(body.pos.x, body.pos.y, body.pos.z ?? 0);
+				const matrix = new THREE.Matrix4().makeTranslation(position);
 
-				instancedSpheres.setMatrixAt(nodeId, matrix)
+				this.instancedSpheres.setMatrixAt(nodeId as number, matrix)
+				const labelSprite = this.layout.graph.getNode(nodeId)?.data.labelSprite;
+				if (labelSprite) {
+					labelSprite.position.copy(position);
+					labelSprite.geometry.computeBoundingSphere();
+				}
 			});
 
-			// Set camera target
-			if (this.selectedNodeId !== undefined) {
-				const position = this.layout.layout.getNodePosition(this.selectedNodeId);
-				controls.target.copy(position);
-				controls.update();
-			}
+			this.instancedSpheres.count = this.layout.graph.getNodeCount();
+			this.instancedSpheres.instanceMatrix.needsUpdate = true;
+			this.instancedSpheres.computeBoundingSphere();
 
-			instancedSpheres.count = this.layout.graph.getNodeCount();
-			instancedSpheres.instanceMatrix.needsUpdate = true;
-			instancedSpheres.computeBoundingSphere();
-
-			const firstPos = this.layout.layout.getNodePosition(0);
-			const nodePos = new THREE.Vector3(firstPos.x, firstPos.y, firstPos.z);
-
-			const labelPos = nodePos;
-			labelSprite.position.set(labelPos.x, labelPos.y, labelPos.z);
-
-			const linePositionAttribute = linkGeometry.getAttribute('position') as THREE.BufferAttribute;
+			const linePositionAttribute = this.linkMesh.geometry.getAttribute('position') as THREE.BufferAttribute;
 			this.layout.graph.forEachLink((link) => {
 				const { from, to } = this.layout.layout.getLinkPosition(link.id);
 
@@ -259,15 +241,14 @@ export class Graph3DView extends ItemView {
 				linePositionAttribute.setXYZ(link.data + 1, to.x, to.y, to.z ?? 0);
 			});
 
+			this.linkMesh.geometry.setDrawRange(0, 2 * this.layout.graph.getLinkCount());
 			linePositionAttribute.needsUpdate = true
-			linkGeometry.computeBoundingSphere();
+			this.linkMesh.geometry.computeBoundingSphere();
 
 			this.renderer.render(scene, camera);
 
 			stats.end();
 		};
-		console.log(this);
-
 
 		animate();
 	}
@@ -327,4 +308,21 @@ function makeLabelCanvas(container: Node, text: string) {
 	canvas.style.visibility = "hidden";
 
 	return canvas;
+}
+
+function createNodeMesh(count: number, material: THREE.Material): THREE.InstancedMesh {
+	const geometry = new THREE.SphereGeometry(1, 16, 16);
+
+	const mesh = new THREE.InstancedMesh(geometry, material, count);
+	mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+	return mesh;
+}
+
+function createLinkGeometry(linkCount: number, material: THREE.Material): THREE.LineSegments {
+	const positions = new Float32Array(linkCount * 6);
+	const geometry = new THREE.BufferGeometry();
+	geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+	return new THREE.LineSegments(geometry, material);
 }
