@@ -1,69 +1,69 @@
 import Stats from 'stats.js'
 import * as THREE from "three";
 import { ArcballControls } from 'three/addons/controls/ArcballControls.js';
-import { Layout } from 'ngraph.forcelayout';
+import { Body, Layout } from 'ngraph.forcelayout';
 import { VaultGraph } from './Graph3DView';
 
+class NodeLabel {
+	labelFont = '48px sans-serif';
 
-function createNodeMesh(count: number, material: THREE.Material): THREE.InstancedMesh {
-	const geometry = new THREE.SphereGeometry(1, 16, 16);
+	text: string;
+	canvas: HTMLCanvasElement;
+	sprite: THREE.Sprite<THREE.Object3DEventMap>;
 
-	const mesh = new THREE.InstancedMesh(geometry, material, count);
-	mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+	constructor(text: string) {
+		this.canvas = document.createElement("canvas");
+		this.canvas.className = "graph-3d-node-canvas";
+		this.canvas.style.visibility = "hidden";
 
-	return mesh;
-}
+		const texture = new THREE.CanvasTexture(this.canvas);
+		const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+		this.sprite = new THREE.Sprite(material);
 
-function createLinkGeometry(linkCount: number, material: THREE.Material): THREE.LineSegments {
-	const positions = new Float32Array(linkCount * 6);
-	const geometry = new THREE.BufferGeometry();
+		// Transform the sprite up
+		this.sprite.center.set(0.5, -2.5);
 
-	geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+		this.setText(text);
 
-	return new THREE.LineSegments(geometry, material);
-}
-
-function createLabelMesh(canvas: HTMLCanvasElement) {
-	const texture = new THREE.CanvasTexture(canvas);
-
-	const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
-	const sprite = new THREE.Sprite(material);
-	sprite.scale.set(canvas.width / 100, canvas.height / 100, 1);
-	sprite.center.set(0.5, -2.5);
-
-	return sprite;
-}
-
-function makeLabelCanvas(text: string) {
-	// We need to create a separate texture therefor canvas for each label
-	const canvas = document.createElement("canvas");
-	canvas.className = "graph-3d-node-canvas";
-	canvas.style.visibility = "hidden";
-
-	const ctx = canvas.getContext('2d');
-
-	if (!ctx) {
-		console.error('Could not get 2D context for canvas');
-		return canvas;
 	}
 
-	ctx.font = '48px sans-serif';
-	const metrics = ctx.measureText(text);
+	setText(text: string) {
+		if (this.text === text) { return; }
+		const ctx = this.canvas.getContext('2d');
 
-	canvas.width = metrics.width + 20;
-	canvas.height = 68;
+		if (!ctx) {
+			console.error(`Could not get 2D context for ${this.canvas}`);
+			return;
+		}
 
-	ctx.fillStyle = 'rgba(10, 10, 10, 0.5)';
-	ctx.fillRect(0, 0, canvas.width, canvas.height);
+		// We need to create a separate texture therefor canvas for each label
+		ctx.font = this.labelFont;
+		const metrics = ctx.measureText(text);
 
-	ctx.fillStyle = 'white';
-	ctx.font = '48px sans-serif';
-	ctx.fillText(text, 10, 58);
+		this.canvas.width = metrics.width + 20;
+		this.canvas.height = 68;
 
-	return canvas;
+		ctx.fillStyle = 'rgba(10, 10, 10, 0.5)';
+		ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+		ctx.fillStyle = 'white';
+		ctx.font = this.labelFont;
+		ctx.fillText(text, 10, 58);
+
+		// Scale down the sprite by a factor of 100
+		this.sprite.scale.set(this.canvas.width / 100, this.canvas.height / 100, 1);
+		this.text = text;
+	}
+
+	dispose() {
+		this.canvas.remove();
+		this.sprite.removeFromParent();
+		this.sprite.material.dispose();
+	}
 }
 
-type NodeData = { labelSprite: THREE.Sprite, label: string };
+
+type NodeData = { label: NodeLabel };
 
 export default class Graph3DRenderer {
 	renderer: THREE.WebGLRenderer;
@@ -79,6 +79,8 @@ export default class Graph3DRenderer {
 	nodesData: NodeData[];
 
 	stats: Stats;
+
+	private readonly sphereGeometry = new THREE.SphereGeometry(1, 16, 16);
 
 	constructor(container: HTMLElement) {
 		// Scene setup
@@ -113,7 +115,7 @@ export default class Graph3DRenderer {
 
 		// Stats
 		this.stats = new Stats();
-		this.stats.showPanel(0);
+		this.stats.showPanel(2);
 		this.stats.dom.style.position = 'absolute';
 		this.stats.dom.style.top = '10px';
 		this.stats.dom.style.right = '10px';
@@ -122,36 +124,59 @@ export default class Graph3DRenderer {
 		container.appendChild(this.stats.dom);
 	}
 
+	private createSphereMesh(count: number, material: THREE.Material): THREE.InstancedMesh {
+		const instancedSpheres = new THREE.InstancedMesh(this.sphereGeometry, material, count);
+		instancedSpheres.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+		return instancedSpheres;
+	}
+
+	private createLinkMesh(linkCount: number, material: THREE.Material): THREE.LineSegments {
+		const positions = new Float32Array(linkCount * 6);
+		const geometry = new THREE.BufferGeometry();
+
+		geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+		return new THREE.LineSegments(geometry, material);
+	}
+
 	initializeMeshes(nodeCount: number, linkCount: number) {
 		this.nodesData = [];
 
-		this.instancedSpheres = createNodeMesh(nodeCount, this.sphereMaterial);
+		this.instancedSpheres = this.createSphereMesh(nodeCount, this.sphereMaterial);
 		this.scene.add(this.instancedSpheres);
 
-		this.linkMesh = createLinkGeometry(linkCount, this.linkMaterial);
+		this.linkMesh = this.createLinkMesh(linkCount, this.linkMaterial);
 		this.scene.add(this.linkMesh);
 	}
 
-	updateNodeColors(graph: VaultGraph) {
-		graph.forEachNode(node => {
-			const color = node.data.resolved ? 0xffffff * Math.random() : 0x404040;
-			this.setNodeColor(node.id as number, new THREE.Color(color));
-		});
-	}
-
-	private setNodeColor(nodeId: number, color: THREE.Color) {
+	setNodeColor(nodeId: number, color: THREE.Color) {
 		this.instancedSpheres.setColorAt(nodeId, color);
 	}
 
-	createNodeLabels(graph: VaultGraph, container: HTMLElement) {
-		graph.forEachNode(node => {
-			const labelCanvas = makeLabelCanvas(node.data.label as string);
-			const labelSprite = createLabelMesh(labelCanvas);
-			this.scene.add(labelSprite);
+	setNodeLabel(nodeId: number, labelText: string) {
+		let label = this.nodesData[nodeId]?.label;
 
-			const nodeData = { labelSprite, label: node.data.label };
-			this.nodesData[node.id as number] = nodeData;
-		});
+		// If label does not exist, create one
+		if (!label) {
+			label = new NodeLabel(labelText);
+			this.scene.add(label.sprite);
+		}
+
+		this.nodesData[nodeId] = { label };
+	}
+
+	private setNodePosition(body: Body, nodeId: number) {
+		const position = new THREE.Vector3(body.pos.x, body.pos.y, body.pos.z ?? 0);
+		const matrix = new THREE.Matrix4().makeTranslation(position);
+
+		this.instancedSpheres.setMatrixAt(nodeId, matrix);
+		const labelSprite = this.nodesData[nodeId]?.label.sprite;
+
+		if (labelSprite) {
+			labelSprite.position.copy(position);
+			labelSprite.geometry.computeBoundingSphere();
+		}
 	}
 
 	updateNodePositions(layout: Layout<VaultGraph>) {
@@ -160,30 +185,30 @@ export default class Graph3DRenderer {
 		// Instance buffer has 16xfp32 per instance (a 4x4 Matrix)
 		const sphereBufferCapacity = this.instancedSpheres.instanceMatrix.count;
 		if (graph.getNodeCount() > sphereBufferCapacity) {
+			// Need to create a new instanced mesh, since we ran out of space.
+			const newSize = 2 * sphereBufferCapacity;
+			const newInstances = this.createSphereMesh(newSize, this.sphereMaterial);
+
+			// Copy the matrices from the previous mesh
+			newInstances.instanceMatrix.set(this.instancedSpheres.instanceMatrix.array);
+			if (this.instancedSpheres.instanceColor && newInstances.instanceColor) {
+				newInstances.instanceColor.set(this.instancedSpheres.instanceColor.array);
+			}
+
 			this.scene.remove(this.instancedSpheres);
 			this.instancedSpheres.dispose();
 
-			const newSize = 2 * sphereBufferCapacity;
-			this.instancedSpheres = createNodeMesh(newSize, this.sphereMaterial);
-			this.scene.add(this.instancedSpheres);
+			this.instancedSpheres = newInstances;
+			this.scene.add(newInstances);
 		}
 
 		layout.forEachBody((body, nodeId: number) => {
-			const position = new THREE.Vector3(body.pos.x, body.pos.y, body.pos.z ?? 0);
-			const matrix = new THREE.Matrix4().makeTranslation(position);
-
-			this.instancedSpheres.setMatrixAt(nodeId, matrix);
-			const labelSprite = this.nodesData[nodeId]?.labelSprite;
-
-			if (labelSprite) {
-				labelSprite.position.copy(position);
-				labelSprite.geometry.computeBoundingSphere();
-			}
+			this.setNodePosition(body, nodeId)
 		});
 
 		this.instancedSpheres.count = graph.getNodeCount();
-
 		this.instancedSpheres.instanceMatrix.needsUpdate = true;
+
 		this.instancedSpheres.computeBoundingSphere();
 	}
 
@@ -191,10 +216,16 @@ export default class Graph3DRenderer {
 		// Link geometry has two positions per 
 		const linkBufferCapacity = this.linkMesh.geometry.getAttribute('position').count / 2;
 		if (layout.graph.getLinkCount() > linkBufferCapacity) {
+			const newMesh = this.createLinkMesh(2 * linkBufferCapacity, this.linkMaterial);
+			const newGeometry = newMesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+
+			const oldGeometry = this.linkMesh.geometry.getAttribute('position') as THREE.BufferAttribute
+			newGeometry.set(oldGeometry.array);
+
 			this.scene.remove(this.linkMesh);
 			this.linkMesh.geometry.dispose();
 
-			this.linkMesh = createLinkGeometry(2 * linkBufferCapacity, this.linkMaterial);
+			this.linkMesh = newMesh;
 			this.scene.add(this.linkMesh);
 		}
 
@@ -235,6 +266,10 @@ export default class Graph3DRenderer {
 		this.renderer.dispose();
 		this.instancedSpheres?.dispose();
 		this.linkMesh?.geometry.dispose();
+		this.nodesData.forEach(({ label }) => {
+			this.scene.remove(label.sprite);
+			label.dispose();
+		});
 	}
 
 }

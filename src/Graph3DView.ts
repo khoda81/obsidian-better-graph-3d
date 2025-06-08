@@ -4,6 +4,7 @@ import createLayout, { Layout } from 'ngraph.forcelayout';
 import createGraph, { Graph, NodeId } from "ngraph.graph";
 import * as ngraph from "ngraph.graph";
 import Graph3DRenderer from "./Graph3DRenderer";
+import { Color } from "three";
 
 export const VIEW_TYPE_GRAPH3D = "graph-3d-view";
 
@@ -170,16 +171,26 @@ export class Graph3DView extends ItemView {
 		this.renderer.initializeMeshes(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount());
 
 		// Setup node colors and labels
-		this.renderer.updateNodeColors(this.layout.graph);
-		this.renderer.createNodeLabels(this.layout.graph, this.contentEl);
+		this.layout.graph.forEachNode(node => {
+			const color = node.data.resolved ? 0xffffff * Math.random() : 0x404040;
+			const nodeId = node.id as number;
+
+			this.renderer.setNodeColor(nodeId, new Color(color));
+			this.renderer.setNodeLabel(nodeId, node.data.label);
+		});
 
 		this.registerEvent(
 			this.app.metadataCache.on("resolved", () => {
 				this.layout.syncWithCache(this.app.metadataCache);
 
 				// Setup node colors and labels
-				this.renderer.updateNodeColors(this.layout.graph);
-				this.renderer.createNodeLabels(this.layout.graph, this.contentEl);
+				this.layout.graph.forEachNode(node => {
+					const color = node.data.resolved ? 0xffffff * Math.random() : 0x404040;
+					const nodeId = node.id as number;
+
+					this.renderer.setNodeColor(nodeId, new Color(color));
+					this.renderer.setNodeLabel(nodeId, node.data.label);
+				});
 			})
 		);
 
