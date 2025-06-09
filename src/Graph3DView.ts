@@ -1,5 +1,5 @@
 
-import { ItemView, MetadataCache, WorkspaceLeaf } from "obsidian";
+import { ItemView, MetadataCache, TFile, WorkspaceLeaf } from "obsidian";
 import createLayout, { Layout } from 'ngraph.forcelayout';
 import createGraph, { Graph, NodeId } from "ngraph.graph";
 import * as ngraph from "ngraph.graph";
@@ -8,15 +8,15 @@ import { Color } from "three";
 
 export const VIEW_TYPE_GRAPH3D = "graph-3d-view";
 
-export type GraphNode = { label: string, resolved: boolean };
-export type VaultGraph = Graph<GraphNode, number>;
+export type GraphNodeData = { label: string, resolved: boolean };
+export type VaultGraph = Graph<GraphNodeData, number>;
 
 class Graph3DLayout {
-	nameToId: Map<string, NodeId>;
+	labelToIndex: Map<string, number>;
 	layout: Layout<VaultGraph>;
 
 	constructor() {
-		this.nameToId = new Map();
+		this.labelToIndex = new Map();
 		const graph = createGraph();
 		this.layout = createLayout(graph, {
 			dimensions: 3,
@@ -29,7 +29,7 @@ class Graph3DLayout {
 		});
 	}
 
-	get graph(): Graph<GraphNode, number> {
+	get graph(): Graph<GraphNodeData, number> {
 		return this.layout.graph;
 	}
 
@@ -69,10 +69,10 @@ class Graph3DLayout {
 
 	private addLinks(links: Record<string, Record<string, number>>, resolved: boolean) {
 		for (const [sourceFile, targets] of Object.entries(links)) {
-			const sourceId = this.addOrGetNode({ label: sourceFile, resolved: true });
+			const sourceId = this.addOrGetNode({ label: sourceFile, resolved: true }).id;
 
 			for (const [targetFile] of Object.entries(targets)) {
-				const targetIndex = this.addOrGetNode({ label: targetFile, resolved });
+				const targetIndex = this.addOrGetNode({ label: targetFile, resolved }).id;
 				this.link(sourceId, targetIndex);
 			}
 		}
@@ -83,49 +83,58 @@ class Graph3DLayout {
 		this.fromMetadataCache(metadataCache);
 
 		// Update links
-		this.graph.forEachNode(source => {
-			const sourceFile = source.data.label;
-			const resolvedTargets = metadataCache.resolvedLinks[sourceFile] || {};
-			const unresolvedTargets = metadataCache.unresolvedLinks[sourceFile] || {};
-
-			for (const targetFile of Object.keys(resolvedTargets)) {
-				const targetId = this.addOrGetNode({ label: targetFile, resolved: true });
-				if (!this.graph.hasLink(source.id, targetId)) {
-					this.link(source.id, targetId);
-				}
-			}
-
-			for (const targetFile of Object.keys(unresolvedTargets)) {
-				const targetId = this.addOrGetNode({ label: targetFile, resolved: false });
-				if (!this.graph.hasLink(source.id, targetId)) {
-					this.link(source.id, targetId);
-				}
-			}
-
-			const allTargets = { ...resolvedTargets, ...unresolvedTargets };
-			const nodeHandler = (target: ngraph.Node<GraphNode>, link: ngraph.Link<number>) => {
-				const targetFile = this.graph.getNode(target.id)?.data.label;
-				if (targetFile && !allTargets[targetFile]) {
-					this.graph.removeLink(link);
-				}
-			};
-
-			// Remove links that no longer exist
-			this.graph.forEachLinkedNode(source.id, nodeHandler, true);
-		});
+		this.graph.forEachNode(source => this.syncNodeWithCache(metadataCache, source));
 	}
 
-	private addOrGetNode(node: GraphNode) {
-		let nodeId = this.nameToId.get(node.label);
+	syncNodeWithCache(metadataCache: MetadataCache, source: ngraph.Node<GraphNodeData>) {
+		const sourceLabel = source.data.label;
+		const resolvedTargets = metadataCache.resolvedLinks[sourceLabel] || {};
+		const unresolvedTargets = metadataCache.unresolvedLinks[sourceLabel] || {};
+
+		for (const targetFile of Object.keys(resolvedTargets)) {
+			const targetId = this.addOrGetNode({ label: targetFile, resolved: true }).id;
+			if (!this.graph.hasLink(source.id, targetId)) {
+				this.link(source.id, targetId);
+			}
+		}
+
+		for (const targetFile of Object.keys(unresolvedTargets)) {
+			const targetId = this.addOrGetNode({ label: targetFile, resolved: false }).id;
+			if (!this.graph.hasLink(source.id, targetId)) {
+				this.link(source.id, targetId);
+			}
+		}
+
+		const allTargets = { ...resolvedTargets, ...unresolvedTargets };
+		const nodeHandler = (target: ngraph.Node<GraphNodeData>, link: ngraph.Link<number>) => {
+			const targetFile = this.graph.getNode(target.id)?.data.label;
+			if (targetFile && !allTargets[targetFile]) {
+				this.graph.removeLink(link);
+			}
+		};
+
+		// Remove links that no longer exist
+		this.graph.forEachLinkedNode(source.id, nodeHandler, true);
+	}
+
+	getFileNode(label: string) {
+		const nodeId = this.labelToIndex.get(label);
+		if (nodeId) {
+			return this.graph.getNode(nodeId);
+		}
+	}
+
+	addOrGetNode(nodeData: GraphNodeData) {
+		let nodeId = this.labelToIndex.get(nodeData.label);
 
 		if (nodeId === undefined) {
 			nodeId = this.graph.getNodeCount();
 		}
 
-		this.graph.addNode(nodeId, node);
-		this.nameToId.set(node.label, nodeId);
+		const node = this.graph.addNode(nodeId, nodeData);
+		this.labelToIndex.set(nodeData.label, nodeId);
 
-		return nodeId;
+		return node;
 	}
 
 	private link(sourceId: NodeId, targetIndex: NodeId) {
@@ -139,7 +148,6 @@ export class Graph3DView extends ItemView {
 	private animationFrameId: number;
 	private renderer: Graph3DRenderer;
 	private layout: Graph3DLayout;
-	private selectedNodeId: number | undefined = undefined;
 
 	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
@@ -166,43 +174,20 @@ export class Graph3DView extends ItemView {
 
 		// Graph generation
 		this.layout = new Graph3DLayout().fromMetadataCache(this.app.metadataCache);
+		console.log(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount(), "Initialized");
 
 		// Initialize meshes
-		this.renderer.initializeMeshes(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount());
+		this.renderer.initializeBuffers(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount());
 
 		// Setup node colors and labels
-		this.layout.graph.forEachNode(node => {
-			const color = node.data.resolved ? 0xffffff * Math.random() : 0x404040;
-			const nodeId = node.id as number;
-
-			this.renderer.setNodeColor(nodeId, new Color(color));
-			this.renderer.setNodeLabel(nodeId, node.data.label);
-		});
+		this.layout.graph.forEachNode(node => this.updateRendererNode(node));
 
 		this.registerEvent(
-			this.app.metadataCache.on("resolved", () => {
-				this.layout.syncWithCache(this.app.metadataCache);
-
-				// Setup node colors and labels
-				this.layout.graph.forEachNode(node => {
-					const color = node.data.resolved ? 0xffffff * Math.random() : 0x404040;
-					const nodeId = node.id as number;
-
-					this.renderer.setNodeColor(nodeId, new Color(color));
-					this.renderer.setNodeLabel(nodeId, node.data.label);
-				});
-			})
+			this.app.metadataCache.on("resolved", () => this.onMetadataCacheResolved())
 		);
 
 		this.registerEvent(
-			this.app.metadataCache.on("resolve", (file) => {
-				console.log(`File Resolved ${Object.entries(file)}`);
-				const t0 = performance.now();
-				this.layout.syncWithCache(this.app.metadataCache);
-				const dur = performance.now() - t0;
-
-				console.log(`Updating layout took ${dur}ms`);
-			})
+			this.app.metadataCache.on("resolve", (file) => this.omMetadataCacheResolve(file))
 		);
 
 		// Animation loop
@@ -222,6 +207,30 @@ export class Graph3DView extends ItemView {
 		};
 
 		animate();
+	}
+
+	private omMetadataCacheResolve(file: TFile) {
+		const source = this.layout.addOrGetNode({ label: file.path, resolved: true });
+
+		this.updateRendererNode(source);
+		this.layout.syncNodeWithCache(this.app.metadataCache, source);
+
+		// console.log(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount(), "Resolve", file);
+	}
+
+	private onMetadataCacheResolved() {
+		this.layout.syncWithCache(this.app.metadataCache);
+		this.layout.graph.forEachNode(node => this.updateRendererNode(node));
+
+		// console.log(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount(), "Resolved");
+	}
+
+	private updateRendererNode(node: ngraph.Node<GraphNodeData>) {
+		const color = node.data.resolved ? 0xffffff : 0x404040;
+		const nodeId = node.id as number;
+
+		this.renderer.setNodeColor(nodeId, new Color(color));
+		this.renderer.setNodeLabel(nodeId, node.data.label);
 	}
 
 	async onClose() {

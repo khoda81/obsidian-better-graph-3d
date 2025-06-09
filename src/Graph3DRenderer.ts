@@ -151,7 +151,7 @@ export default class Graph3DRenderer {
 		return new THREE.LineSegments(geometry, material);
 	}
 
-	initializeMeshes(nodeCount: number, linkCount: number) {
+	initializeBuffers(nodeCount: number, linkCount: number) {
 		this.nodesData = [];
 
 		this.instancedSpheres = this.createSphereMesh(nodeCount, this.sphereMaterial);
