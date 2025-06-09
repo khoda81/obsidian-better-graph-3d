@@ -17,14 +17,12 @@ class NodeLabel {
 		this.canvas.style.visibility = "hidden";
 
 		const texture = new THREE.CanvasTexture(this.canvas);
-		const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+		const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
 		this.sprite = new THREE.Sprite(material);
 
 		// Transform the sprite up
 		this.sprite.center.set(0.5, -2.5);
-
 		this.setText(text);
-
 	}
 
 	setText(text: string) {
@@ -104,8 +102,21 @@ export default class Graph3DRenderer {
 		this.controls.setGizmosVisible(false);
 
 		// Materials
-		this.linkMaterial = new THREE.LineBasicMaterial({ color: 0xa0a0a0, transparent: true, opacity: 0.6 });
-		this.sphereMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+		this.linkMaterial = new THREE.LineBasicMaterial({
+			color: 0xa0a0a0,
+			transparent: true,
+			opacity: 0.6,
+			depthWrite: true,
+			depthTest: true,
+		});
+
+		this.sphereMaterial = new THREE.MeshLambertMaterial({
+			color: 0xffffff,
+			transparent: false,
+			opacity: 1.0,
+			depthWrite: true,
+			depthTest: true,
+		});
 
 		// Lighting
 		this.scene.add(new THREE.AmbientLight(0x808080));
