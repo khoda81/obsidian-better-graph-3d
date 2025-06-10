@@ -74,7 +74,7 @@ export class PluginSettingManager implements ISettingManager<Setting> {
 	 * You should always use this function to update setting
 	 */
 	updateSettings(
-		updateFunc: (setting: typeof this.setting) => void
+		updateFunc: (setting: typeof this.setting) => void,
 	): Setting {
 		// update the setting first
 		updateFunc(this.setting);
@@ -133,7 +133,7 @@ export class PluginSettingManager implements ISettingManager<Setting> {
 				createNotice(corruptedMessage);
 				console.warn(
 					"parsed loaded data failed",
-					result.error.flatten()
+					result.error.flatten(),
 				);
 				return;
 			}

@@ -32,27 +32,27 @@ export default class BetterGraph3D extends Plugin {
 
 				menu.addItem((item) =>
 					item
-						.setTitle('Copy')
-						.setIcon('documents')
+						.setTitle("Copy")
+						.setIcon("documents")
 						.onClick(() => {
-							new Notice('Copied');
-						})
+							new Notice("Copied");
+						}),
 				);
 
 				menu.addItem((item) =>
 					item
-						.setTitle('Paste')
-						.setIcon('paste')
+						.setTitle("Paste")
+						.setIcon("paste")
 						.onClick(() => {
-							new Notice('Pasted');
-						})
+							new Notice("Pasted");
+						}),
 				);
 
 				menu.showAtMouseEvent(event);
 
 				// Called when the user clicks the icon.
 				new Notice("This is a notice!");
-			}
+			},
 		);
 
 		// Perform additional things with the ribbon
@@ -88,7 +88,6 @@ export default class BetterGraph3D extends Plugin {
 	}
 }
 
-
 class SampleSettingTab extends PluginSettingTab {
 	plugin: BetterGraph3D;
 
@@ -113,7 +112,7 @@ class SampleSettingTab extends PluginSettingTab {
 						this.plugin.settingManager.updateSettings((setting) => {
 							setting.value.test = value;
 						});
-					})
+					}),
 			);
 	}
 }

@@ -10,7 +10,7 @@ export interface ISettingManager<SettingType = unknown> {
 	 * @returns the updated settings
 	 */
 	updateSettings(
-		updateFunc: (setting: typeof this.setting) => void
+		updateFunc: (setting: typeof this.setting) => void,
 	): SettingType;
 
 	/**

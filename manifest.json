@@ -6,7 +6,6 @@
 	"description": "A better 3D graph for Obsidian.",
 	"author": "Mahdi khodabandeh",
 	"authorUrl": "https://github.com/khoda81",
-	"fundingUrl": {
-	},
+	"fundingUrl": {},
 	"isDesktopOnly": false
 }

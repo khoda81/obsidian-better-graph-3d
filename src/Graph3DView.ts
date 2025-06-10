@@ -1,14 +1,13 @@
-
 import { ItemView, MetadataCache, TFile, WorkspaceLeaf } from "obsidian";
-import createLayout, { Layout } from 'ngraph.forcelayout';
+import createLayout, { Layout } from "ngraph.forcelayout";
 import createGraph, { Graph, NodeId } from "ngraph.graph";
 import * as ngraph from "ngraph.graph";
-import Graph3DRenderer from "./Graph3DRenderer";
+import Graph3DRenderer from "./renderer/Graph3DRenderer";
 import { Color } from "three";
 
 export const VIEW_TYPE_GRAPH3D = "graph-3d-view";
 
-export type GraphNodeData = { label: string, resolved: boolean };
+export type GraphNodeData = { label: string; resolved: boolean };
 export type VaultGraph = Graph<GraphNodeData, number>;
 
 class Graph3DLayout {
@@ -41,7 +40,7 @@ class Graph3DLayout {
 		// Critical parameter: average degree (determines percolation phase)
 		const connectionProbability = desiredAverageDegree / (numNodes - 1);
 
-		this.graph.forEachNode(source => {
+		this.graph.forEachNode((source) => {
 			const count = this.graph.getLinkCount();
 			this.graph.forEachNode(target => {
 				if (source !== target && Math.random() < connectionProbability) {
@@ -89,7 +88,8 @@ class Graph3DLayout {
 	syncNodeWithCache(metadataCache: MetadataCache, source: ngraph.Node<GraphNodeData>) {
 		const sourceLabel = source.data.label;
 		const resolvedTargets = metadataCache.resolvedLinks[sourceLabel] || {};
-		const unresolvedTargets = metadataCache.unresolvedLinks[sourceLabel] || {};
+		const unresolvedTargets =
+			metadataCache.unresolvedLinks[sourceLabel] || {};
 
 		for (const targetFile of Object.keys(resolvedTargets)) {
 			const targetId = this.addOrGetNode({ label: targetFile, resolved: true }).id;
@@ -148,6 +148,7 @@ export class Graph3DView extends ItemView {
 	private animationFrameId: number;
 	private renderer: Graph3DRenderer;
 	private layout: Graph3DLayout;
+	private stable: boolean;
 
 	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
@@ -165,22 +166,22 @@ export class Graph3DView extends ItemView {
 		this.headerEl.style.background = "transparent";
 		this.contentEl.empty();
 
-		this.contentEl.style.padding = '0';
-		this.contentEl.style.overflow = 'hidden';
-		this.contentEl.style.position = 'relative';
+		this.contentEl.style.padding = "0";
+		this.contentEl.style.overflow = "hidden";
+		this.contentEl.style.position = "relative";
 
 		// Initialize renderer with container
 		this.renderer = new Graph3DRenderer(this.contentEl);
 
 		// Graph generation
 		this.layout = new Graph3DLayout().fromMetadataCache(this.app.metadataCache);
-		console.log(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount(), "Initialized");
+		this.stable = false;
 
 		// Initialize meshes
 		this.renderer.initializeBuffers(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount());
 
 		// Setup node colors and labels
-		this.layout.graph.forEachNode(node => this.updateRendererNode(node));
+		this.layout.graph.forEachNode((node) => this.updateRendererNode(node));
 
 		this.registerEvent(
 			this.app.metadataCache.on("resolved", () => this.onMetadataCacheResolved())
@@ -194,7 +195,9 @@ export class Graph3DView extends ItemView {
 		const animate = () => {
 			this.animationFrameId = requestAnimationFrame(animate);
 
-			this.layout.layout.step();
+			if (!this.stable) {
+				this.stable = this.layout.layout.step();
+			}
 
 			this.renderer.stats.begin();
 			this.renderer.updateViewSize();
@@ -214,15 +217,13 @@ export class Graph3DView extends ItemView {
 
 		this.updateRendererNode(source);
 		this.layout.syncNodeWithCache(this.app.metadataCache, source);
-
-		// console.log(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount(), "Resolve", file);
+		this.stable = false;
 	}
 
 	private onMetadataCacheResolved() {
 		this.layout.syncWithCache(this.app.metadataCache);
-		this.layout.graph.forEachNode(node => this.updateRendererNode(node));
-
-		// console.log(this.layout.graph.getNodeCount(), this.layout.graph.getLinkCount(), "Resolved");
+		this.layout.graph.forEachNode((node) => this.updateRendererNode(node));
+		this.stable = false;
 	}
 
 	private updateRendererNode(node: ngraph.Node<GraphNodeData>) {

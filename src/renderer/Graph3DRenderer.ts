@@ -1,65 +1,9 @@
-import Stats from 'stats.js'
+import Stats from "stats.js";
 import * as THREE from "three";
-import { ArcballControls } from 'three/addons/controls/ArcballControls.js';
-import { Body, Layout } from 'ngraph.forcelayout';
-import { VaultGraph } from './Graph3DView';
-
-class NodeLabel {
-	labelFont = '48px sans-serif';
-
-	text: string;
-	canvas: HTMLCanvasElement;
-	sprite: THREE.Sprite<THREE.Object3DEventMap>;
-
-	constructor(text: string) {
-		this.canvas = document.createElement("canvas");
-		this.canvas.className = "graph-3d-node-canvas";
-		this.canvas.style.visibility = "hidden";
-
-		const texture = new THREE.CanvasTexture(this.canvas);
-		const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
-		this.sprite = new THREE.Sprite(material);
-
-		// Transform the sprite up
-		this.sprite.center.set(0.5, -2.5);
-		this.setText(text);
-	}
-
-	setText(text: string) {
-		if (this.text === text) { return; }
-		const ctx = this.canvas.getContext('2d');
-
-		if (!ctx) {
-			console.error(`Could not get 2D context for ${this.canvas}`);
-			return;
-		}
-
-		// We need to create a separate texture therefor canvas for each label
-		ctx.font = this.labelFont;
-		const metrics = ctx.measureText(text);
-
-		this.canvas.width = metrics.width + 20;
-		this.canvas.height = 68;
-
-		ctx.fillStyle = 'rgba(10, 10, 10, 0.5)';
-		ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-		ctx.fillStyle = 'white';
-		ctx.font = this.labelFont;
-		ctx.fillText(text, 10, 58);
-
-		// Scale down the sprite by a factor of 100
-		this.sprite.scale.set(this.canvas.width / 100, this.canvas.height / 100, 1);
-		this.text = text;
-	}
-
-	dispose() {
-		this.canvas.remove();
-		this.sprite.removeFromParent();
-		this.sprite.material.dispose();
-	}
-}
-
+import { ArcballControls } from "three/addons/controls/ArcballControls.js";
+import { Body, Layout } from "ngraph.forcelayout";
+import { VaultGraph } from "../Graph3DView";
+import { NodeLabel } from "./NodeLabel";
 
 type NodeData = { label: NodeLabel };
 
@@ -83,7 +27,8 @@ export default class Graph3DRenderer {
 	constructor(container: HTMLElement) {
 		// Scene setup
 		this.scene = new THREE.Scene();
-		this.camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 10000);
+		const aspect = container.clientWidth / container.clientHeight;
+		this.camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 10000);
 
 		// TODO: Animate the camera out according to graph
 		this.camera.position.z = 200;
@@ -127,10 +72,10 @@ export default class Graph3DRenderer {
 		// Stats
 		this.stats = new Stats();
 		this.stats.showPanel(2);
-		this.stats.dom.style.position = 'absolute';
-		this.stats.dom.style.top = '10px';
-		this.stats.dom.style.right = '10px';
-		this.stats.dom.style.left = 'auto';
+		this.stats.dom.style.position = "absolute";
+		this.stats.dom.style.top = "10px";
+		this.stats.dom.style.right = "10px";
+		this.stats.dom.style.left = "auto";
 
 		container.appendChild(this.stats.dom);
 	}
@@ -146,7 +91,7 @@ export default class Graph3DRenderer {
 		const positions = new Float32Array(linkCount * 6);
 		const geometry = new THREE.BufferGeometry();
 
-		geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 
 		return new THREE.LineSegments(geometry, material);
 	}
@@ -214,7 +159,7 @@ export default class Graph3DRenderer {
 		}
 
 		layout.forEachBody((body, nodeId: number) => {
-			this.setNodePosition(body, nodeId)
+			this.setNodePosition(body, nodeId);
 		});
 
 		this.instancedSpheres.count = graph.getNodeCount();
@@ -225,12 +170,12 @@ export default class Graph3DRenderer {
 
 	updateLinkPositions(layout: Layout<VaultGraph>) {
 		// Link geometry has two positions per 
-		const linkBufferCapacity = this.linkMesh.geometry.getAttribute('position').count / 2;
+		const linkBufferCapacity = this.linkMesh.geometry.getAttribute("position").count / 2;
 		if (layout.graph.getLinkCount() > linkBufferCapacity) {
 			const newMesh = this.createLinkMesh(2 * linkBufferCapacity, this.linkMaterial);
-			const newGeometry = newMesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+			const newGeometry = newMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
 
-			const oldGeometry = this.linkMesh.geometry.getAttribute('position') as THREE.BufferAttribute
+			const oldGeometry = this.linkMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
 			newGeometry.set(oldGeometry.array);
 
 			this.scene.remove(this.linkMesh);
@@ -240,7 +185,7 @@ export default class Graph3DRenderer {
 			this.scene.add(this.linkMesh);
 		}
 
-		const linePositionAttribute = this.linkMesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+		const linePositionAttribute = this.linkMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
 		layout.graph.forEachLink((link) => {
 			const { from, to } = layout.getLinkPosition(link.id);
 
@@ -282,5 +227,4 @@ export default class Graph3DRenderer {
 			label.dispose();
 		});
 	}
-
 }

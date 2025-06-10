@@ -18,26 +18,12 @@
 		"allowSyntheticDefaultImports": true,
 		"noUncheckedIndexedAccess": true,
 		"skipLibCheck": true,
-		"lib": [
-			"DOM",
-			"ES5",
-			"ES6",
-			"ES7",
-			"ESNext"
-		],
-		"types": [
-			"bun-types"
-		],
+		"lib": ["DOM", "ES5", "ES6", "ES7", "ESNext"],
+		"types": ["bun-types"],
 		"paths": {
-			"@/*": [
-				"./src/*"
-			]
+			"@/*": ["./src/*"]
 		}
 	},
-	"include": [
-		"**/*.ts"
-	],
-	"exclude": [
-		"node_modules"
-	]
+	"include": ["**/*.ts"],
+	"exclude": ["node_modules"]
 }

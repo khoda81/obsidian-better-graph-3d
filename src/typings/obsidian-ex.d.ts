@@ -331,7 +331,7 @@ interface CustomCSS extends Component {
 	 */
 	installTheme: (
 		{ name: string, repo: string, author: string },
-		version: string
+		version: string,
 	) => Promise<void>;
 	/**
 	 * Check whether a specific theme is installed by theme name
@@ -813,7 +813,7 @@ interface PropertyWidget {
 	render: (
 		element: HTMLElement,
 		metadataField: any,
-		property: PropertyInfo
+		property: PropertyInfo,
 	) => void;
 	/**
 	 * @internal Reserved keys for the widget
@@ -1118,7 +1118,7 @@ interface Plugins {
 	installPlugin: (
 		repo: string,
 		manifest: PluginManifest,
-		version: string
+		version: string,
 	) => Promise<void>;
 	/**
 	 * Check whether a plugin is deprecated
@@ -1525,7 +1525,7 @@ interface ViewRegistry extends Events {
 	 */
 	registerView: (
 		type: string,
-		viewCreator: (leaf: WorkspaceLeaf) => View
+		viewCreator: (leaf: WorkspaceLeaf) => View,
 	) => void;
 	/**
 	 * Register a view and its associated file extensions
@@ -1533,7 +1533,7 @@ interface ViewRegistry extends Events {
 	registerViewWithExtensions: (
 		extensions: string[],
 		type: string,
-		viewCreator: (leaf: WorkspaceLeaf) => View
+		viewCreator: (leaf: WorkspaceLeaf) => View,
 	) => void;
 	/**
 	 * @internal
@@ -1905,7 +1905,7 @@ declare module "obsidian" {
 		 */
 		importAttachments: (
 			imports: ImportedAttachments[],
-			folder: TFolder
+			folder: TFolder,
 		) => Promise<void>;
 		/**
 		 * @internal Initialize the entire application using the provided FS adapter
@@ -1968,7 +1968,7 @@ declare module "obsidian" {
 		saveAttachment: (
 			path: string,
 			extension: string,
-			data: ArrayBuffer
+			data: ArrayBuffer,
 		) => Promise<void>;
 		/**
 		 * Save a value to the localstorage given key
@@ -2061,7 +2061,7 @@ declare module "obsidian" {
 		registerKey: (
 			modifiers: Modifier[],
 			key: string | null,
-			func: KeymapEventListener
+			func: KeymapEventListener,
 		) => KeymapEventHandler;
 		/**
 		 * @internal
@@ -2147,7 +2147,7 @@ declare module "obsidian" {
 		 * Get all backlink information for a file
 		 */
 		getBacklinksForFile: (
-			file?: TFile
+			file?: TFile,
 		) => CustomArrayDict<string, Reference>;
 		/**
 		 * Get paths of all files cached in the vault
@@ -2323,7 +2323,7 @@ declare module "obsidian" {
 		 */
 		createAndOpenMarkdownFile: (
 			path: string,
-			location: PaneType
+			location: PaneType,
 		) => Promise<void>;
 		/**
 		 * Create a new file in the vault at specified location
@@ -2336,7 +2336,7 @@ declare module "obsidian" {
 			location: TFolder = null,
 			filename: string = null,
 			extension: string = "md",
-			contents: string = ""
+			contents: string = "",
 		) => Promise<TFile>;
 		/**
 		 * Creates a new untitled folder in the vault at specified location
@@ -2349,7 +2349,7 @@ declare module "obsidian" {
 		createNewMarkdownFile: (
 			location: TFolder = null,
 			filename: string = null,
-			contents: string = ""
+			contents: string = "",
 		) => Promise<TFile>;
 		/**
 		 * Creates a new Markdown file based on linktext and path
@@ -2358,7 +2358,7 @@ declare module "obsidian" {
 		 */
 		createNewMarkdownFileFromLinktext: (
 			filename: string,
-			path: string
+			path: string,
 		) => Promise<TFile>;
 		/**
 		 * @internal
@@ -2383,14 +2383,14 @@ declare module "obsidian" {
 			primary_text: string,
 			basename: string,
 			secondary_text: string,
-			atStart: boolean = true
+			atStart: boolean = true,
 		) => Promise<void>;
 		/**
 		 * Iterate over all links in the vault with callback
 		 * @param callback - Callback to execute for each link
 		 */
 		iterateAllRefs: (
-			callback: (path: string, link: PositionedReference) => void
+			callback: (path: string, link: PositionedReference) => void,
 		) => void;
 		/**
 		 * Merge two files
@@ -2403,7 +2403,7 @@ declare module "obsidian" {
 			file: TFile,
 			otherFile: TFile,
 			override: string,
-			atStart: boolean
+			atStart: boolean,
 		) => Promise<void>;
 		/**
 		 * Prompt the user to delete a file
@@ -2419,7 +2419,7 @@ declare module "obsidian" {
 		 */
 		registerFileParentCreator: (
 			extension: string,
-			location: TFolder
+			location: TFolder,
 		) => void;
 		/**
 		 * @internal
@@ -2662,7 +2662,7 @@ declare module "obsidian" {
 		 */
 		applyWriteOptions: (
 			normalizedPath: string,
-			options: DataWriteOptions
+			options: DataWriteOptions,
 		) => Promise<void>;
 		/**
 		 * Get base path of vault (OS path)
@@ -2732,7 +2732,7 @@ declare module "obsidian" {
 		reconcileDeletion: (
 			normalizedPath: string,
 			normalizedNewPath: string,
-			option: boolean
+			option: boolean,
 		) => void;
 		/**
 		 * @internal
@@ -2740,7 +2740,7 @@ declare module "obsidian" {
 		reconcileFile: (
 			normalizedPath: string,
 			normalizedNewPath: string,
-			option: boolean
+			option: boolean,
 		) => void;
 		/**
 		 * @internal
@@ -2748,21 +2748,21 @@ declare module "obsidian" {
 		reconcileFileCreation: (
 			normalizedPath: string,
 			normalizedNewPath: string,
-			option: boolean
+			option: boolean,
 		) => void;
 		/**
 		 * @internal
 		 */
 		reconcileFileInternal: (
 			normalizedPath: string,
-			normalizedNewPath: string
+			normalizedNewPath: string,
 		) => void;
 		/**
 		 * @internal
 		 */
 		reconcileFolderCreation: (
 			normalizedPath: string,
-			normalizedNewPath: string
+			normalizedNewPath: string,
 		) => void;
 		/**
 		 * @internal
@@ -2773,7 +2773,7 @@ declare module "obsidian" {
 		 */
 		reconcileSymbolicLinkCreation: (
 			normalizedPath: string,
-			normalizedNewPath: string
+			normalizedNewPath: string,
 		) => void;
 		/**
 		 * @internal Remove file from files listing and trigger deletion event
@@ -2922,7 +2922,7 @@ declare module "obsidian" {
 		 */
 		deserializeLayout: (
 			leaf: LeafEntry,
-			ribbon?: "left" | "right"
+			ribbon?: "left" | "right",
 		) => Promise<WorkspaceLeaf>;
 		/**
 		 * @internal Reveal leaf in side ribbon with specified view type and state
@@ -2933,7 +2933,7 @@ declare module "obsidian" {
 		ensureSideLeaf: (
 			type: string,
 			ribbon: "left" | "right",
-			viewstate: OpenViewState
+			viewstate: OpenViewState,
 		) => void;
 		/**
 		 * Get active file view if exists
@@ -2949,7 +2949,7 @@ declare module "obsidian" {
 		 */
 		getAdjacentLeafInDirection: (
 			leaf: WorkspaceLeaf,
-			direction: "top" | "bottom" | "left" | "right"
+			direction: "top" | "bottom" | "left" | "right",
 		) => WorkspaceLeaf | null;
 		/**
 		 * @internal Get the direction where the leaf should be dropped on dragevent
@@ -2958,7 +2958,7 @@ declare module "obsidian" {
 			e: DragEvent,
 			rect: DOMRect,
 			directions: ["left", "right"],
-			leaf: WorkspaceLeaf
+			leaf: WorkspaceLeaf,
 		) => "left" | "right" | "top" | "bottom" | "center";
 		/**
 		 * @internal Get the leaf where the leaf should be dropped on dragevent
@@ -2986,7 +2986,7 @@ declare module "obsidian" {
 		 */
 		getSideLeaf: (
 			sideRibbon: WorkspaceSidedock | WorkspaceMobileDrawer,
-			split: boolean
+			split: boolean,
 		) => WorkspaceLeaf;
 		/**
 		 * @internal
@@ -2998,7 +2998,7 @@ declare module "obsidian" {
 		handleLinkContextMenu: (
 			menu: Menu,
 			linkText: string,
-			sourcePath: string
+			sourcePath: string,
 		) => void;
 		/**
 		 * @internal Check if leaf has been attached to the workspace
@@ -3009,14 +3009,14 @@ declare module "obsidian" {
 		 */
 		iterateLeaves: (
 			split: WorkspaceSplit,
-			callback: (leaf: WorkspaceLeaf) => any
+			callback: (leaf: WorkspaceLeaf) => any,
 		) => void;
 		/**
 		 * Iterate the tabs of a split till meeting a condition
 		 */
 		iterateTabs: (
 			tabs: WorkspaceSplit | WorkspaceSplit[],
-			cb: (leaf) => boolean
+			cb: (leaf) => boolean,
 		) => boolean;
 		/**
 		 * @internal Load workspace from disk and initialize
@@ -3061,14 +3061,14 @@ declare module "obsidian" {
 		pushUndoHistory: (
 			leaf: WorkspaceLeaf,
 			parentID: string,
-			rootID: string
+			rootID: string,
 		) => void;
 		/**
 		 * @internal Get drag event target location
 		 */
 		recursiveGetTarget: (
 			e: DragEvent,
-			leaf: WorkspaceLeaf
+			leaf: WorkspaceLeaf,
 		) => WorkspaceTabs | null;
 		/**
 		 * @internal Register a CodeMirror editor extension
@@ -3084,7 +3084,7 @@ declare module "obsidian" {
 		 */
 		registerObsidianProtocolHandler: (
 			protocol: string,
-			handler: ObsidianProtocolHandler
+			handler: ObsidianProtocolHandler,
 		) => void;
 		/**
 		 * @internal Constructs hook for receiving URI actions
@@ -3121,14 +3121,14 @@ declare module "obsidian" {
 			leaf: WorkspaceLeaf,
 			newleaf: WorkspaceLeaf,
 			direction?: SplitDirection,
-			before?: boolean
+			before?: boolean,
 		) => void;
 		/**
 		 * Split provided leaf, or active leaf if none provided
 		 */
 		splitLeafOrActive: (
 			leaf?: WorkspaceLeaf,
-			direction?: SplitDirection
+			direction?: SplitDirection,
 		) => void;
 		/**
 		 * @internal
@@ -3220,7 +3220,7 @@ declare module "obsidian" {
 		 * Get an abstract file by path, insensitive to case
 		 */
 		getAbstractFileByPathInsensitive: (
-			path: string
+			path: string,
 		) => TAbstractFile | null;
 		/**
 		 * @internal Get path for file that does not conflict with other existing files
@@ -3232,7 +3232,7 @@ declare module "obsidian" {
 		getAvailablePathForAttachments: (
 			filename: string,
 			file: TAbstractFile,
-			extension: string
+			extension: string,
 		) => string;
 		/**
 		 * Get value from config by key
@@ -3349,7 +3349,7 @@ declare module "obsidian" {
 		writeJson: (
 			path: string,
 			data: object,
-			pretty?: boolean
+			pretty?: boolean,
 		) => Promise<void>;
 		/**
 		 * Write a plugin config file (path relative to vault root) to disk
@@ -3376,7 +3376,7 @@ declare module "obsidian" {
 			ranges: { from: EditorPosition; to: EditorPosition }[],
 			style: "is-flashing" | "obsidian-search-match-highlight",
 			remove_previous: boolean,
-			x: boolean
+			x: boolean,
 		) => void;
 		/**
 		 * Convert editor position to screen position
@@ -3385,7 +3385,7 @@ declare module "obsidian" {
 		 */
 		coordsAtPos: (
 			pos: EditorPosition,
-			relative_to_editor = false
+			relative_to_editor = false,
 		) => { left: number; top: number; bottom: number; right: number };
 		/**
 		 * Unfolds all folded lines one level up
@@ -3404,9 +3404,7 @@ declare module "obsidian" {
 		/**
 		 * Get a clickable link - if it exists - at specified position
 		 */
-		getClickableTokenAt: (
-			pos: EditorPosition
-		) => {
+		getClickableTokenAt: (pos: EditorPosition) => {
 			start: EditorPosition;
 			end: EditorPosition;
 			text: string;
@@ -3456,7 +3454,7 @@ declare module "obsidian" {
 				| "highlight"
 				| "code"
 				| "math"
-				| "comment"
+				| "comment",
 		) => void;
 
 		/**
